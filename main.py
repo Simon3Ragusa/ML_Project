@@ -16,6 +16,9 @@ import numpy as np
 from sklearn.manifold import TSNE
 from sklearn.neighbors import KNeighborsClassifier
 
+means = (0.4332, 0.3757, 0.3340)
+stds = (0.2983, 0.2732, 0.2665)
+
 def extract_representations(model, loader):
     print("Calcolo")
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -50,9 +53,8 @@ def main():
     transform = transforms.Compose([
             transforms.Resize(100),
             transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+            transforms.Normalize(means, stds)
         ])
-
 
     siamese_train_dataset = SiameseDataset(transform = transform)
     siamese_test_dataset = SiameseDataset(split = 'test', transform=transform)
@@ -61,56 +63,57 @@ def main():
     
     menu_choice = input("Face Recognition:\n1 - Allena il modello\n2 - Testa il modello gia allenato\nScelta: ")
     
-    if(menu_choice == 1):
+    if(int(menu_choice) == 1):
+        
         train_loader = siamese_train_dataset.get_loader()['pairsTrain']
         test_loader = siamese_test_dataset.get_loader()['pairsTest']
         
         epochs = input("Inserisci il numero di epoche: ")
         exp_name = input("Inserisci il nome del log: ")
         
+        print("Inizio il training...")
         siamese_net_task.embedding_net = siamese_net_task.training_step(train_loader, test_loader, exp_name= exp_name, epochs = int(epochs))
     
         choice = input("Vuoi salvare il modello?: ")
         if(choice == 's'):
             torch.save(siamese_net_task.embedding_net.state_dict(), 'my_model.pth')
-        print("Modello salvato")
+            print("Modello salvato")
     else:
+        
         test_accuracy_loader = siamese_test_dataset.get_loader()['test']
         
         siamese_net_task.embedding_net.load_state_dict(torch.load('my_model.pth'))
         
+        print("Rete caricata")
+        
         test_representations, test_labels = extract_representations(siamese_net_task.embedding_net, test_accuracy_loader)
     
+        print("Rappresentazioni calcolate")
         knn_classifier = KNeighborsClassifier(n_neighbors=3)
         knn_classifier.fit(test_representations, test_labels)
     
         e = 0
-        positives = 0    
-    
+        positives = 0
+        
+        print(len(test_accuracy_loader))
+        
         for batch in test_accuracy_loader:
-            print(batch[0].std())
-        '''
-        for person in siamese_test_dataset.people_label:
+            img = batch[0].to('cuda')
             
-            img = person[0].to('cuda')
-            img = img.unsqueeze(0)
+            y_true = batch[1]
             
-            y_true = person[1]
+            person_representations = siamese_net_task.embedding_net(img)
+            predicted_labels = knn_classifier.predict(person_representations.detach().to('cpu').numpy())
             
-            person_representation = siamese_net_task.embedding_net(img)
-            predicted_label = knn_classifier.predict(person_representation.detach().to('cpu').numpy())
-            if y_true == predicted_label:
-                positives += 1
+            for i, label in enumerate(predicted_labels):
+                if label == y_true[i]:
+                    positives += 1
             
-            e += 1
+            e += len(y_true)
             
-            if((e % 10) == 0):
-                print("Successi ==> ", positives)
-                print("Esperimenti totali ==> ", e)
-                print("\n")
-        '''
+            print("Successi ==> ", positives)
+            print("Esperimenti totali ==> ", e)
             
-                    
         print("Successi: ", positives)
         print("Totali: ", e)
 
