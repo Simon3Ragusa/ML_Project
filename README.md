@@ -1,3 +1,3 @@
 Machine Learning Project
 
-Neural network for image recognition
+Neural network for face recognition
