@@ -12,6 +12,25 @@ import pytorch_lightning as pl
 from torch.optim import SGD
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import accuracy_score
+import numpy as np
+from sklearn.neighbors import KNeighborsClassifier
+
+def extract_representations(model, loader):
+    print("Calcolo rappresentazioni di test")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model.eval()
+    model.to(device)
+    
+    representations, labels = [], []
+    
+    for batch in loader:
+        img = batch[0].to(device)
+        emb = model(img)
+        emb = emb.detach().to('cpu').numpy()
+        labels.append(batch[1])
+        representations.append(emb)
+        
+    return np.concatenate(representations), np.concatenate(labels)
 
 class EmbeddingNet(nn.Module):
     
@@ -168,4 +187,50 @@ class SiameseNetworkTask():
             print("Fine epoca: %d" % e)
             
         return self.embedding_net
+            
+    
+    def test_accuracy(self, test_loader, neighbors = 3):
+        
+        test_representations, test_labels = extract_representations(self.embedding_net, test_loader)
+        
+        knn_classifier = KNeighborsClassifier(n_neighbors=3)
+        knn_classifier.fit(test_representations, test_labels)
+    
+        e = 0
+        positives = 0
+        
+        print(len(test_loader))
+        
+        for batch in test_loader:
+            img = batch[0].to('cuda')
+            
+            y_true = batch[1]
+            
+            person_representations = self.embedding_net(img)
+            predicted_labels = knn_classifier.predict(person_representations.detach().to('cpu').numpy())
+            
+            for i, label in enumerate(predicted_labels):
+                if label == y_true[i]:
+                    positives += 1
+            
+            e += len(y_true)
+            
+            print("Successi ==> ", positives)
+            print("Esperimenti totali ==> ", e)
+            
+        print("\nSuccessi: ", positives)
+        print("Totali: ", e)
+        
+        accuracy = "{:.2f}".format(float(positives)/float(e))
+        
+        return float(accuracy)*100
+    
+    def predict(self, emb1, emb2, threshold = 0.5):
+        d = nn.functional.pairwise_distance(emb1, emb2)
+        print(d)
+        preds = (d < threshold).float()
+        
+        return preds
+            
+        
             

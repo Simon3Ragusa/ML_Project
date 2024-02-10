@@ -7,7 +7,7 @@ Created on Thu Feb  1 17:02:02 2024
 
 import os
 from MyModel import SiameseNetworkTask, EmbeddingNet
-from MyDatasets import SiameseDataset
+from MyDatasets import PairsDataset
 from PIL import Image
 from matplotlib import pyplot as plt
 from torchvision import transforms
@@ -18,23 +18,7 @@ from sklearn.neighbors import KNeighborsClassifier
 
 means = (0.4332, 0.3757, 0.3340)
 stds = (0.2983, 0.2732, 0.2665)
-
-def extract_representations(model, loader):
-    print("Calcolo")
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model.eval()
-    model.to(device)
-    
-    representations, labels = [], []
-    
-    for batch in loader:
-        img = batch[0].to(device)
-        emb = model(img)
-        emb = emb.detach().to('cpu').numpy()
-        labels.append(batch[1])
-        representations.append(emb)
-        
-    return np.concatenate(representations), np.concatenate(labels)
+BATCH_SIZE = 16
 
 def stampa_demo(loader):
     plt.figure(figsize = (12, 4))
@@ -56,66 +40,39 @@ def main():
             transforms.Normalize(means, stds)
         ])
 
-    siamese_train_dataset = SiameseDataset(transform = transform)
-    siamese_test_dataset = SiameseDataset(split = 'test', transform=transform)
+    siamese_dataset = PairsDataset(transform = transform)
     
-    siamese_net_task = SiameseNetworkTask(EmbeddingNet())
+    siamese_net_task = SiameseNetworkTask(EmbeddingNet(), lr = 0.001)
     
     menu_choice = input("Face Recognition:\n1 - Allena il modello\n2 - Testa il modello gia allenato\nScelta: ")
     
     if(int(menu_choice) == 1):
         
-        train_loader = siamese_train_dataset.get_loader()['pairsTrain']
-        test_loader = siamese_test_dataset.get_loader()['pairsTest']
+        train_loader = siamese_dataset.get_loaders(batch_size=BATCH_SIZE)['train']
+        validation_loader = siamese_dataset.get_loaders(batch_size=BATCH_SIZE)['valid']
         
         epochs = input("Inserisci il numero di epoche: ")
         exp_name = input("Inserisci il nome del log: ")
         
         print("Inizio il training...")
-        siamese_net_task.embedding_net = siamese_net_task.training_step(train_loader, test_loader, exp_name= exp_name, epochs = int(epochs))
+        siamese_net_task.embedding_net = siamese_net_task.training_step(train_loader, validation_loader, exp_name= exp_name, epochs = int(epochs))
     
         choice = input("Vuoi salvare il modello?: ")
         if(choice == 's'):
             torch.save(siamese_net_task.embedding_net.state_dict(), 'my_model.pth')
             print("Modello salvato")
+            
     else:
         
-        test_accuracy_loader = siamese_test_dataset.get_loader()['test']
+        test_accuracy_loader = siamese_dataset.get_loaders(batch_size=BATCH_SIZE)['test_people']
         
         siamese_net_task.embedding_net.load_state_dict(torch.load('my_model.pth'))
         
         print("Rete caricata")
         
-        test_representations, test_labels = extract_representations(siamese_net_task.embedding_net, test_accuracy_loader)
-    
-        print("Rappresentazioni calcolate")
-        knn_classifier = KNeighborsClassifier(n_neighbors=3)
-        knn_classifier.fit(test_representations, test_labels)
-    
-        e = 0
-        positives = 0
+        acc = siamese_net_task.test_accuracy(test_accuracy_loader, neighbors=3)
         
-        print(len(test_accuracy_loader))
-        
-        for batch in test_accuracy_loader:
-            img = batch[0].to('cuda')
-            
-            y_true = batch[1]
-            
-            person_representations = siamese_net_task.embedding_net(img)
-            predicted_labels = knn_classifier.predict(person_representations.detach().to('cpu').numpy())
-            
-            for i, label in enumerate(predicted_labels):
-                if label == y_true[i]:
-                    positives += 1
-            
-            e += len(y_true)
-            
-            print("Successi ==> ", positives)
-            print("Esperimenti totali ==> ", e)
-            
-        print("Successi: ", positives)
-        print("Totali: ", e)
+        print("{:d}%".format(int(acc)))
 
     
 if __name__ == "__main__":
