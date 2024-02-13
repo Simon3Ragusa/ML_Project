@@ -8,7 +8,6 @@ Created on Thu Feb  1 20:52:15 2024
 from os.path import join
 from torch import nn
 import torch
-import pytorch_lightning as pl
 from torch.optim import SGD
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import accuracy_score
@@ -93,8 +92,8 @@ class ContrastiveLoss(nn.Module):
         
     def forward(self, anchor_img, validation_img, label):
         d = nn.functional.pairwise_distance(anchor_img, validation_img)
-        loss = 0.5 * (1 - label.float()) * torch.pow(d,2) + \
-            0.5 * label.float() * torch.pow(torch.clamp(self.m - d, min = 0), 2)
+        loss = 0.5 * label.float() * torch.pow(d,2) + \
+            0.5 * (1 - label.float()) * torch.pow(torch.clamp(self.m - d, min = 0), 2)
             
         return loss.mean()
  
@@ -127,7 +126,7 @@ class SiameseNetworkTask():
         
         self.criterion = ContrastiveLoss(margin)
         self.embedding_net = embedding_net
-        self.optimizers = SGD(self.embedding_net.parameters(), lr, momentum = momentum)
+        self.optimizers = SGD(self.embedding_net.parameters(), lr, momentum = momentum, weight_decay=0.1)
         
         self.loss_meter = AverageValueMeter()
         self.acc_meter = AverageValueMeter()
@@ -168,7 +167,11 @@ class SiameseNetworkTask():
                         global_step += n
                         
                         loss = self.criterion(emb1, emb2, label)
-                        
+                        preds = self.predict(emb1, emb2)
+                        print(label)
+                        print(preds)
+        
+                        acc = accuracy_score(label.to('cpu'), preds.to('cpu'))
                         
                         if mode == 'train':
                             loss.backward()
@@ -176,13 +179,16 @@ class SiameseNetworkTask():
                             self.optimizers.zero_grad()
                             
                         self.loss_meter.add(loss.item(), n)
+                        self.acc_meter.add(acc, n)
                         
                         if mode == 'train':
                             writer.add_scalar('loss/train', self.loss_meter.value(), global_step = global_step)
+                            writer.add_scalar('accuracy/train', self.acc_meter.value(), global_step = global_step)
                             
-                        print("Batch: %d" % i + " ===> [Loss: %f]" % loss)
+                        print("Batch: %d" % i + " ===> [Loss: %f]" % loss + "[Accuracy: %f]" % acc)
                         
                 writer.add_scalar('loss/' + mode, self.loss_meter.value(), global_step = global_step)
+                writer.add_scalar('accuracy/' + mode, self.acc_meter.value(), global_step=global_step)
                 
             print("Fine epoca: %d" % e)
             
@@ -193,7 +199,7 @@ class SiameseNetworkTask():
         
         test_representations, test_labels = extract_representations(self.embedding_net, test_loader)
         
-        knn_classifier = KNeighborsClassifier(n_neighbors=3)
+        knn_classifier = KNeighborsClassifier(n_neighbors=neighbors)
         knn_classifier.fit(test_representations, test_labels)
     
         e = 0
@@ -227,10 +233,8 @@ class SiameseNetworkTask():
     
     def predict(self, emb1, emb2, threshold = 0.5):
         d = nn.functional.pairwise_distance(emb1, emb2)
-        print(d)
         preds = (d < threshold).float()
         
-        return preds
-            
+        return preds      
         
             

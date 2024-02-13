@@ -14,11 +14,10 @@ from torchvision import transforms
 import torch
 import numpy as np
 from sklearn.manifold import TSNE
-from sklearn.neighbors import KNeighborsClassifier
 
 means = (0.4332, 0.3757, 0.3340)
 stds = (0.2983, 0.2732, 0.2665)
-BATCH_SIZE = 16
+BATCH_SIZE = 32
 
 def stampa_demo(loader):
     plt.figure(figsize = (12, 4))
@@ -73,6 +72,7 @@ def main():
         acc = siamese_net_task.test_accuracy(test_accuracy_loader, neighbors=3)
         
         print("{:d}%".format(int(acc)))
+    
 
     
 if __name__ == "__main__":
