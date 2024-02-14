@@ -31,9 +31,14 @@ class PairsDataset():
                                    transform = self.transform,
                                    download = 'True')
         
-        self.people_labels = LFWPeople(root=BASE_FOLDER,
+        self.train_people_labels = LFWPeople(root=BASE_FOLDER,
+                                      split='train',
+                                      transform=self.transform,
+                                      download = 'True')
+        
+        self.test_people_labels = LFWPeople(root=BASE_FOLDER,
                                       split='test',
-                                      transform=transform,
+                                      transform=self.transform,
                                       download = 'True')
         
         self.train_pairs, self.val_pairs = train_test_split(train_val_pairs, test_size = 0.14)
@@ -42,7 +47,8 @@ class PairsDataset():
         return {'train': DataLoader(self.train_pairs, batch_size = batch_size, shuffle = True, num_workers = 0),
                 'valid': DataLoader(self.val_pairs, batch_size = batch_size, shuffle = False, num_workers = 0),
                 'test': DataLoader(self.test_pairs, batch_size = batch_size, shuffle = False, num_workers = 0),
-                'test_people': DataLoader(self.people_labels, batch_size = batch_size, shuffle = False, num_workers = 0)}
+                'train_people': DataLoader(self.train_people_labels, batch_size = batch_size, shuffle = False, num_workers = 0),
+                'test_people': DataLoader(self.test_people_labels, batch_size = batch_size, shuffle = False, num_workers = 0)}
     
     def get_trainset(self):
         return self.train_pairs
@@ -53,5 +59,8 @@ class PairsDataset():
     def get_testset(self):
         return self.test_pairs
     
-    def get_people_labels(self):
-        return self.people_labels
+    def get_train_people_labels(self):
+        return self.train_people_labels
+    
+    def get_test_people_labels(self):
+        return self.test_people_labels
